@@ -32,7 +32,7 @@ def calculate_rgb_grayscale_histograms(image):
     
     st.pyplot(fig)
     
-    # 2. Histogram dalam bentuk Angka (Nilai Puncak Absolut)
+    # 2. Histogram dalam bentuk Angka (Nilai Puncak Maksimum)
     st.markdown("#### Data Angka Histogram (Tinggi Puncak Maksimum)")
     col1, col2 = st.columns(2)
     
@@ -54,17 +54,12 @@ def calculate_rgb_grayscale_histograms(image):
     
     return gray
 
-# --- FUNGSI BARU UNTUK MENCARI NILAI PUNCAK ---
+# --- FUNGSI BARU UNTUK MENCARI NILAI PUNCAK (Digunakan di Thresholding) ---
 def find_histogram_peaks(hist, num_peaks=2):
     """Mencari N nilai puncak tertinggi (lokasi intensitas) pada histogram."""
-    # Menghaluskan histogram (opsional, untuk mengurangi noise lokal)
     hist_smoothed = cv2.GaussianBlur(hist, (5, 5), 0) 
-    
-    # Mengambil indeks (posisi intensitas) dengan nilai tertinggi
-    # Meratakan dan mengambil argumen terurut menurun
     peak_indices = np.argsort(hist_smoothed.flatten())[::-1]
     
-    # Mengambil N nilai puncak unik (memfilter intensitas 0 yang sering menjadi puncak palsu)
     unique_peaks = []
     for idx in peak_indices:
         if idx not in unique_peaks:
@@ -75,43 +70,47 @@ def find_histogram_peaks(hist, num_peaks=2):
     return sorted(unique_peaks)
 
 def threshold_and_binarize(gray_image):
-    """Menghitung Nilai Threshold Otsu, menampilkan dua nilai puncak, dan citra Biner."""
+    """Menghitung Nilai Threshold Otsu, menampilkan dua nilai puncak, citra Biner, dan Histogramnya."""
     st.subheader("2. Thresholding dan Binarisasi")
     
-    # Hitung Histogram Grayscale
     hist_gray = cv2.calcHist([gray_image], [0], None, [256], [0, 256])
-    
-    # Dapatkan dua nilai puncak tertinggi
     peaks = find_histogram_peaks(hist_gray, num_peaks=2)
     
     # 1. Tampilkan Nilai Puncak
     st.markdown("#### Nilai Puncak Histogram Grayscale (Intensitas)")
-    
     if len(peaks) >= 2:
         st.info(
             f"Dua nilai intensitas puncak tertinggi (lokasi) pada histogram: **{peaks[0]}** dan **{peaks[1]}**."
         )
-        st.caption("Threshold biner optimal biasanya berada di antara dua puncak ini.")
-    elif len(peaks) == 1:
-         st.warning(f"Hanya satu puncak signifikan yang ditemukan pada intensitas: **{peaks[0]}**. Citra mungkin kurang kontras.")
-    else:
-        st.warning("Puncak histogram tidak dapat dideteksi dengan jelas.")
-
-    # 2. Hitung dan Tampilkan Nilai Threshold Otsu
-    # Otsu's Binarization mencari threshold optimal yang membagi dua puncak.
+    
+    # 2. Hitung Nilai Threshold Otsu
     ret, binary_img = cv2.threshold(gray_image, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     
     st.markdown("#### Hasil Thresholding (Otsu)")
     st.code(f"Nilai Threshold Otomatis (Otsu): {ret:.2f}")
     
-    # 3. Tampilkan Citra Biner
-    st.markdown("#### Citra Biner Hasil Thresholding")
-    st.image(binary_img, caption=f"Citra Biner dengan Threshold: {ret:.2f}", channels="GRAY")
+    # --- TAMPILKAN CITRA DAN HISTOGRAM BINER ---
+    
+    col_img, col_hist = st.columns(2)
+    
+    with col_img:
+        st.markdown("##### Citra Biner")
+        st.image(binary_img, caption=f"Threshold: {ret:.2f}", channels="GRAY")
+        
+    with col_hist:
+        st.markdown("##### Histogram Citra Biner")
+        # Histogram citra biner hanya memiliki dua bar: di 0 dan 255
+        hist_binary = cv2.calcHist([binary_img], [0], None, [256], [0, 256])
+        fig, ax = plt.subplots(figsize=(7, 4))
+        ax.plot(hist_binary, color='black')
+        ax.set_title('Histogram Biner')
+        ax.set_xlim([0, 256])
+        st.pyplot(fig)
     
     return binary_img
 
 def histogram_equalization_analysis(gray_image):
-    """Melakukan Histogram Equalization dan menampilkan hasilnya."""
+    """Melakukan Histogram Equalization, menampilkan hasilnya, dan Histogramnya."""
     st.subheader("3. Histogram Equalization (Uniform)")
     
     # --- Perhitungan Statistik Awal (Sebelum Equalization) ---
@@ -120,14 +119,27 @@ def histogram_equalization_analysis(gray_image):
 
     # --- Proses Equalization ---
     equalized_img = cv2.equalizeHist(gray_image)
-    
+    hist_after = cv2.calcHist([equalized_img], [0], None, [256], [0, 256])
+
     # --- Perhitungan Statistik Setelah Equalization ---
     mean_after = np.mean(equalized_img)
     std_dev_after = np.std(equalized_img)
     
-    # --- Tampilkan Citra Hasil Equalization ---
-    st.markdown("#### Citra Hasil Equalization")
-    st.image(equalized_img, caption="Citra setelah Histogram Equalization", channels="GRAY")
+    # --- TAMPILKAN CITRA DAN HISTOGRAM EQUALIZATION ---
+    
+    col_img, col_hist = st.columns(2)
+
+    with col_img:
+        st.markdown("##### Citra Hasil Equalization")
+        st.image(equalized_img, caption="Citra setelah Equalization", channels="GRAY")
+    
+    with col_hist:
+        st.markdown("##### Histogram Hasil Equalization")
+        fig, ax = plt.subplots(figsize=(7, 4))
+        ax.plot(hist_after, color='blue')
+        ax.set_title('Histogram Equalized')
+        ax.set_xlim([0, 256])
+        st.pyplot(fig)
     
     # --- Tampilkan Nilai Mean dan Standard Deviasi ---
     st.markdown("#### Analisis Mean dan Standard Deviasi")
@@ -147,7 +159,7 @@ def histogram_equalization_analysis(gray_image):
 # --- Bagian Utama Streamlit App ---
 
 def main():
-    st.title("Aplikasi Pemrosesan Citra Dasar (Tugas Thresholding & Equalization)")
+    st.title("Aplikasi Pemrosesan Citra Dasar (Tugas Thresholding & Equalization) 🖼️")
     st.sidebar.header("Input Citra")
 
     uploaded_file = st.sidebar.file_uploader(
@@ -163,14 +175,17 @@ def main():
         st.image(img_rgb, caption="Citra yang Diinput", use_column_width=True)
         st.markdown("---")
         
+        # 1. Histogram RGB dan Grayscale
         gray_image = calculate_rgb_grayscale_histograms(img_bgr) 
         
         st.markdown("---")
 
+        # 2. Thresholding dan Binarisasi
         threshold_and_binarize(gray_image)
         
         st.markdown("---")
 
+        # 3. Histogram Equalization dan Analisis Mean/Std Dev
         histogram_equalization_analysis(gray_image)
 
     else:
